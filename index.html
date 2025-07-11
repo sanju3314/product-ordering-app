@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Product Ordering System</title>
+    <title>Product Ordering System with Invoice Generator</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -106,13 +106,6 @@
             </svg>
         );
 
-        const DollarSign = ({ size = 24, className = "" }) => (
-            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-                <line x1="12" y1="1" x2="12" y2="23"/>
-                <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-            </svg>
-        );
-
         const ChevronLeft = ({ size = 24, className = "" }) => (
             <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
                 <polyline points="15,18 9,12 15,6"/>
@@ -133,6 +126,22 @@
             </svg>
         );
 
+        const Building = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                <rect x="4" y="2" width="16" height="20" rx="2" ry="2"/>
+                <path d="M9 22v-4h6v4"/>
+                <path d="M8 6h.01"/>
+                <path d="M16 6h.01"/>
+                <path d="M12 6h.01"/>
+                <path d="M12 10h.01"/>
+                <path d="M12 14h.01"/>
+                <path d="M16 10h.01"/>
+                <path d="M16 14h.01"/>
+                <path d="M8 10h.01"/>
+                <path d="M8 14h.01"/>
+            </svg>
+        );
+
         const ProductOrderingApp = () => {
           const [currentStep, setCurrentStep] = useState(1);
           const [customerData, setCustomerData] = useState({
@@ -143,14 +152,34 @@
             pincode: ''
           });
           
+          // Extended customer data for invoice
+          const [invoiceData, setInvoiceData] = useState({
+            customerName: '',
+            addressLine1: '',
+            addressLine2: '',
+            city: '',
+            pincode: '',
+            state: '',
+            gstNo: '',
+            contactPerson: '',
+            contactDetails: '',
+            totalCartons: '',
+            ewayBillNumber: '',
+            paymentTerms: '100% ADVANCE',
+            customPaymentTerms: '',
+            logisticsCharges: 0,
+            cashDiscount: 0,
+            piNumber: '13/2025-26'
+          });
+          
           const [products, setProducts] = useState([]);
           const [categories, setCategories] = useState([]);
           const [currentCategory, setCurrentCategory] = useState(0);
           const [uploadedCSV, setUploadedCSV] = useState(null);
           const [orderData, setOrderData] = useState({});
           const [orderSummary, setOrderSummary] = useState({ totalItems: 0, totalValue: 0 });
-          const [showCSVPreview, setShowCSVPreview] = useState(false);
-          const [csvContent, setCsvContent] = useState('');
+          const [showInvoicePreview, setShowInvoicePreview] = useState(false);
+          const [invoiceHTML, setInvoiceHTML] = useState('');
           const fileInputRef = useRef(null);
 
           // Calculate totals whenever orderData or products change
@@ -172,6 +201,33 @@
             setOrderSummary({ totalItems, totalValue: totalValue.toFixed(2) });
           }, [orderData, products]);
 
+          const validateCustomerInfo = () => {
+            const { customerName, customerMobile, city, pincode } = customerData;
+            const mobileRegex = /^\d{10}$/;
+            const pincodeRegex = /^\d{6}$/;
+            
+            return customerName.trim() && 
+                   customerMobile.trim() && mobileRegex.test(customerMobile) &&
+                   city.trim() && 
+                   pincode.trim() && pincodeRegex.test(pincode);
+          };
+
+          // Validate GST Number
+          const validateGST = (gstNo) => {
+            const gstRegex = /^\d{2}[A-Z]{5}\d{4}[A-Z]{1}[A-Z\d]{1}[Z]{1}[A-Z\d]{1}$/;
+            return gstNo === '' || gstRegex.test(gstNo);
+          };
+
+          // Indian States and UTs list
+          const indianStates = [
+            'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat', 'Haryana',
+            'Himachal Pradesh', 'Jharkhand', 'Karnataka', 'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Manipur',
+            'Meghalaya', 'Mizoram', 'Nagaland', 'Odisha', 'Punjab', 'Rajasthan', 'Sikkim', 'Tamil Nadu',
+            'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal',
+            'Andaman and Nicobar Islands', 'Chandigarh', 'Dadra and Nagar Haveli and Daman and Diu', 'Delhi',
+            'Jammu and Kashmir', 'Ladakh', 'Lakshadweep', 'Puducherry'
+          ];
+
           // Handle CSV upload
           const handleCSVUpload = (event) => {
             const file = event.target.files[0];
@@ -182,7 +238,6 @@
               dynamicTyping: true,
               skipEmptyLines: true,
               complete: (results) => {
-                // Clean headers by trimming whitespace
                 const cleanedData = results.data.map(row => {
                   const cleanedRow = {};
                   Object.keys(row).forEach(key => {
@@ -190,7 +245,7 @@
                     cleanedRow[cleanKey] = row[key];
                   });
                   return cleanedRow;
-                }).filter(row => row['Child SKU Code']); // Filter out empty rows
+                }).filter(row => row['Child SKU Code']);
                 
                 setProducts(cleanedData);
                 const uniqueCategories = [...new Set(cleanedData.map(item => item.Category))].filter(Boolean);
@@ -203,7 +258,6 @@
               }
             });
             
-            // Reset file input
             event.target.value = '';
           };
 
@@ -215,7 +269,6 @@
               const parentSKU = product['Parent SKU Code'];
               const childSKU = product['Child SKU Code'];
               
-              // Extract variant from positions 9-11 of child SKU (or use color as fallback)
               let variant;
               if (childSKU && childSKU.length > 11) {
                 variant = childSKU.substring(9, 12);
@@ -264,63 +317,6 @@
             });
           };
 
-          // Generate CSV download
-          const generateCSV = () => {
-            const orderEntries = Object.keys(orderData).filter(childSKU => orderData[childSKU] > 0);
-            
-            if (orderEntries.length === 0) {
-              alert('⚠️ No products selected for order. Please select quantities before downloading.');
-              return;
-            }
-
-            const orderRows = orderEntries.map(childSKU => {
-              const quantity = orderData[childSKU];
-              const product = products.find(p => p['Child SKU Code'] === childSKU);
-              
-              if (!product) return null;
-              
-              const totalValue = (quantity * parseFloat(product.WSP || 0)).toFixed(2);
-              return {
-                'Date': customerData.date,
-                'Customer Name': customerData.customerName,
-                'Customer Mobile': customerData.customerMobile,
-                'City': customerData.city,
-                'Pincode': customerData.pincode,
-                'Parent SKU Code': product['Parent SKU Code'],
-                'Child SKU Code': product['Child SKU Code'],
-                'Color': product.Color,
-                'Size': product.Size,
-                'Category': product.Category,
-                'MRP': product.MRP,
-                'WSP': product.WSP,
-                'HSN': product.HSN,
-                'Order Qty': quantity,
-                'Total Price': totalValue
-              };
-            }).filter(Boolean);
-
-            try {
-              const csv = Papa.unparse(orderRows);
-              
-              // Try to download (works in published environments)
-              const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-              const link = document.createElement('a');
-              const url = URL.createObjectURL(blob);
-              link.href = url;
-              link.download = `Order_${customerData.customerName.replace(/[^a-zA-Z0-9]/g, '_')}_${customerData.date}.csv`;
-              
-              document.body.appendChild(link);
-              link.click();
-              document.body.removeChild(link);
-              URL.revokeObjectURL(url);
-              
-              alert('✅ Order exported successfully!');
-            } catch (error) {
-              console.error('Export error:', error);
-              alert('❌ Error exporting order. Please try again.');
-            }
-          };
-
           // Get current category products
           const getCurrentCategoryProducts = () => {
             if (categories.length === 0) return [];
@@ -328,9 +324,489 @@
             return products.filter(p => p.Category === currentCat);
           };
 
-          const validateCustomerInfo = () => {
-            const { customerName, customerMobile, city, pincode } = customerData;
-            return customerName.trim() && customerMobile.trim() && city.trim() && pincode.trim();
+          // Move to invoice step
+          const proceedToInvoice = () => {
+            setInvoiceData(prev => ({
+              ...prev,
+              customerName: customerData.customerName,
+              city: customerData.city,
+              pincode: customerData.pincode,
+              contactDetails: customerData.customerMobile
+            }));
+            setCurrentStep(4);
+          };
+
+          // Number to words conversion
+          const numberToWords = (num) => {
+            const ones = ['', 'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE'];
+            const teens = ['TEN', 'ELEVEN', 'TWELVE', 'THIRTEEN', 'FOURTEEN', 'FIFTEEN', 'SIXTEEN', 'SEVENTEEN', 'EIGHTEEN', 'NINETEEN'];
+            const tens = ['', '', 'TWENTY', 'THIRTY', 'FORTY', 'FIFTY', 'SIXTY', 'SEVENTY', 'EIGHTY', 'NINETY'];
+            const thousands = ['', 'THOUSAND', 'LAKH', 'CRORE'];
+
+            if (num === 0) return 'ZERO';
+
+            const convertHundreds = (n) => {
+              let result = '';
+              if (n >= 100) {
+                result += ones[Math.floor(n / 100)] + ' HUNDRED ';
+                n %= 100;
+              }
+              if (n >= 20) {
+                result += tens[Math.floor(n / 10)] + ' ';
+                n %= 10;
+              } else if (n >= 10) {
+                result += teens[n - 10] + ' ';
+                return result;
+              }
+              if (n > 0) {
+                result += ones[n] + ' ';
+              }
+              return result;
+            };
+
+            let result = '';
+            let groupIndex = 0;
+            
+            while (num > 0) {
+              if (groupIndex === 0) {
+                result = convertHundreds(num % 1000) + thousands[groupIndex] + ' ' + result;
+                num = Math.floor(num / 1000);
+              } else if (groupIndex === 1) {
+                result = convertHundreds(num % 100) + thousands[groupIndex] + ' ' + result;
+                num = Math.floor(num / 100);
+              } else {
+                result = convertHundreds(num % 100) + thousands[groupIndex] + ' ' + result;
+                num = Math.floor(num / 100);
+              }
+              groupIndex++;
+            }
+
+            return result.trim();
+          };
+
+          // Calculate invoice totals
+          const calculateInvoiceTotals = () => {
+            const orderEntries = Object.keys(orderData).filter(childSKU => orderData[childSKU] > 0);
+            
+            let totalQty = 0;
+            let totalValue = 0;
+            
+            orderEntries.forEach(childSKU => {
+              const quantity = orderData[childSKU];
+              const product = products.find(p => p['Child SKU Code'] === childSKU);
+              if (product) {
+                totalQty += quantity;
+                totalValue += quantity * parseFloat(product.WSP || 0);
+              }
+            });
+
+            const discountAmount = (totalValue * invoiceData.cashDiscount) / 100;
+            const netAmount = totalValue - discountAmount + parseFloat(invoiceData.logisticsCharges || 0);
+            
+            const isMaharashtra = invoiceData.state.toLowerCase().includes('maharashtra');
+            const gstRate = 5;
+            const gstAmount = (netAmount * gstRate) / 100;
+            
+            const finalAmount = netAmount + gstAmount;
+
+            return {
+              totalQty,
+              totalValue,
+              discountAmount,
+              netAmount,
+              gstAmount,
+              finalAmount,
+              isMaharashtra,
+              cgst: isMaharashtra ? gstAmount / 2 : 0,
+              sgst: isMaharashtra ? gstAmount / 2 : 0,
+              igst: !isMaharashtra ? gstAmount : 0
+            };
+          };
+
+          // Generate Invoice PDF (HTML version)
+          const generateInvoicePDF = () => {
+            const totals = calculateInvoiceTotals();
+            const orderEntries = Object.keys(orderData).filter(childSKU => orderData[childSKU] > 0);
+            
+            const invoiceHTMLContent = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Proforma Invoice</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 0; 
+            padding: 20px; 
+            font-size: 11px; 
+            line-height: 1.3;
+        }
+        
+        .main-container {
+            max-width: 800px;
+            margin: 0 auto;
+            border: 2px solid #000;
+        }
+        
+        .header-section {
+            display: flex;
+            align-items: center;
+            padding: 15px;
+            border-bottom: 1px solid #000;
+            background: #f8f9fa;
+        }
+        
+        .logo-container {
+            flex: 1;
+            text-align: center;
+        }
+        
+        .logo-text {
+            font-size: 32px;
+            font-weight: bold;
+            letter-spacing: 2px;
+            margin-bottom: 5px;
+            color: #000;
+        }
+        
+        .logo-subtitle {
+            font-size: 11px;
+            letter-spacing: 1px;
+            color: #666;
+        }
+        
+        .company-addresses {
+            flex: 1;
+            font-size: 9px;
+            text-align: right;
+            line-height: 1.2;
+        }
+        
+        .invoice-title {
+            background: #ffeb3b;
+            padding: 8px;
+            text-align: center;
+            font-weight: bold;
+            font-size: 12px;
+            border-bottom: 1px solid #000;
+        }
+        
+        .company-gst {
+            text-align: center;
+            padding: 5px;
+            font-weight: bold;
+            border-bottom: 1px solid #000;
+        }
+        
+        .customer-banking-section {
+            display: flex;
+            border-bottom: 1px solid #000;
+        }
+        
+        .customer-details {
+            flex: 2;
+            padding: 10px;
+            border-right: 1px solid #000;
+        }
+        
+        .banking-details {
+            flex: 1;
+            padding: 10px;
+        }
+        
+        .section-title {
+            font-weight: bold;
+            margin-bottom: 5px;
+            text-decoration: underline;
+        }
+        
+        .detail-row {
+            margin-bottom: 2px;
+        }
+        
+        .products-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 0;
+        }
+        
+        .products-table th {
+            background: #f0f0f0;
+            padding: 8px 4px;
+            text-align: center;
+            font-weight: bold;
+            font-size: 10px;
+            border: 1px solid #000;
+        }
+        
+        .products-table td {
+            padding: 6px 4px;
+            text-align: center;
+            font-size: 9px;
+            border: 1px solid #000;
+            vertical-align: middle;
+        }
+        
+        .products-table td.left-align {
+            text-align: left;
+        }
+        
+        .products-table td.right-align {
+            text-align: right;
+        }
+        
+        .totals-section {
+            padding: 10px;
+            text-align: right;
+            background: #f8f9fa;
+            border-top: 1px solid #000;
+        }
+        
+        .total-line {
+            margin-bottom: 3px;
+            font-size: 11px;
+        }
+        
+        .total-line.final {
+            font-weight: bold;
+            font-size: 12px;
+            margin-top: 5px;
+            padding-top: 5px;
+            border-top: 1px solid #000;
+        }
+        
+        .amount-words {
+            padding: 10px;
+            font-weight: bold;
+            font-size: 11px;
+            border-top: 1px solid #000;
+            text-align: center;
+        }
+        
+        .footer-section {
+            display: flex;
+            padding: 10px;
+            border-top: 1px solid #000;
+            font-size: 9px;
+        }
+        
+        .terms-conditions {
+            flex: 2;
+            padding-right: 20px;
+        }
+        
+        .qr-payment {
+            flex: 1;
+            text-align: center;
+        }
+        
+        .qr-code {
+            width: 120px;
+            height: 120px;
+            border: 2px solid #000;
+            margin: 10px auto;
+            background: #f8f9fa;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            text-align: center;
+            position: relative;
+        }
+        
+        .qr-pattern {
+            width: 100%;
+            height: 100%;
+            background-image: 
+                radial-gradient(circle at 25% 25%, #000 2px, transparent 2px),
+                radial-gradient(circle at 75% 25%, #000 2px, transparent 2px),
+                radial-gradient(circle at 25% 75%, #000 2px, transparent 2px),
+                radial-gradient(circle at 75% 75%, #000 2px, transparent 2px),
+                linear-gradient(90deg, #000 1px, transparent 1px),
+                linear-gradient(#000 1px, transparent 1px);
+            background-size: 10px 10px, 10px 10px, 10px 10px, 10px 10px, 4px 4px, 4px 4px;
+        }
+        
+        .authorized-sig {
+            text-align: right;
+            margin-top: 20px;
+            font-weight: bold;
+        }
+        
+        @media print {
+            body { margin: 0; padding: 10px; }
+            .main-container { border: 2px solid #000; }
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <!-- Header Section -->
+        <div class="header-section">
+            <div class="logo-container">
+                <div class="logo-text">UMORA</div>
+                <div class="logo-subtitle">FASHION PRIVATE LIMITED</div>
+            </div>
+            <div class="company-addresses">
+                <div><strong>Register Office:</strong> 25, Prabhat Centre Premises Co-op Society Ltd,</div>
+                <div>Plot no 7, Sector 1A, CBD Belapur Navi Mumbai 400614</div>
+                <div style="margin-top: 8px;"><strong>Factory Address:</strong></div>
+                <div>F6/218, Bhumi World Industrial Park,</div>
+                <div>Pimplas Village, Mumbai-Nashik Highway,</div>
+                <div>Thane – 421302</div>
+            </div>
+        </div>
+        
+        <!-- Invoice Title -->
+        <div class="invoice-title">
+            PROFORMA INVOICE# ${invoiceData.piNumber} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; DATE ${new Date(invoiceData.date || customerData.date).toLocaleDateString('en-GB')}
+        </div>
+        
+        <!-- Company GST -->
+        <div class="company-gst">
+            UMORA FASHION PVT LTD<br>
+            GSTIN/UIN: 27AADCU5944M1ZR
+        </div>
+        
+        <!-- Customer and Banking Details -->
+        <div class="customer-banking-section">
+            <div class="customer-details">
+                <div class="section-title">BUYER DETAILS</div>
+                <div class="detail-row"><strong>CUSTOMER NAME:</strong> ${invoiceData.customerName}</div>
+                <div class="detail-row"><strong>ADDRESS LINE 1:</strong> ${invoiceData.addressLine1}</div>
+                <div class="detail-row"><strong>ADDRESS LINE 2:</strong> ${invoiceData.addressLine2}</div>
+                <div class="detail-row"><strong>CITY:</strong> ${invoiceData.city}</div>
+                <div class="detail-row"><strong>PINCODE:</strong> ${invoiceData.pincode}</div>
+                <div class="detail-row"><strong>STATE:</strong> ${invoiceData.state}</div>
+                <div class="detail-row"><strong>GST NO:</strong> ${invoiceData.gstNo}</div>
+                <div class="detail-row"><strong>CONTACT PERSON:</strong> ${invoiceData.contactPerson}</div>
+                <div class="detail-row"><strong>CONTACT DETAILS:</strong> ${invoiceData.contactDetails}</div>
+            </div>
+            <div class="banking-details">
+                <div class="section-title">BANKING DETAILS</div>
+                <div class="detail-row"><strong>UMORA FASHION PVT LTD</strong></div>
+                <div class="detail-row">ICICI BANK VASHI</div>
+                <div class="detail-row">IFSC Code: ICIC0001881</div>
+                <div class="detail-row">A/c No: 188105002877</div>
+                <div style="margin-top: 10px;">
+                    <div class="detail-row"><strong>TOTAL CARTONS / BOXES:</strong> ${invoiceData.totalCartons}</div>
+                    <div class="detail-row"><strong>E-WAY BILL NUMBER:</strong> ${invoiceData.ewayBillNumber}</div>
+                    <div class="detail-row"><strong>PAYMENT TERMS:</strong> ${invoiceData.paymentTerms === 'OTHER' ? invoiceData.customPaymentTerms : invoiceData.paymentTerms}</div>
+                    <div class="detail-row"><strong>LOGISTICS CHARGES:</strong></div>
+                    <div class="detail-row">${invoiceData.logisticsCharges > 0 ? '₹' + invoiceData.logisticsCharges.toLocaleString('en-IN') : '*STANDARD DELIVERY FREE'}</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Products Table -->
+        <table class="products-table">
+            <thead>
+                <tr>
+                    <th style="width: 5%;">S NO</th>
+                    <th style="width: 25%;">Style Code / Product</th>
+                    <th style="width: 8%;">Size</th>
+                    <th style="width: 15%;">Category</th>
+                    <th style="width: 12%;">Color</th>
+                    <th style="width: 10%;">HSN/SAC</th>
+                    <th style="width: 8%;">Qty / Packs</th>
+                    <th style="width: 7%;">MRP</th>
+                    <th style="width: 7%;">RATE</th>
+                    <th style="width: 13%;">Taxable Value</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${orderEntries.map((childSKU, index) => {
+                  const quantity = orderData[childSKU];
+                  const product = products.find(p => p['Child SKU Code'] === childSKU);
+                  if (!product) return '';
+                  
+                  const lineTotal = quantity * parseFloat(product.WSP || 0);
+                  
+                  return `
+                    <tr>
+                        <td>${index + 1}</td>
+                        <td class="left-align">${product['Child SKU Code']}</td>
+                        <td>${product.Size}</td>
+                        <td class="left-align">${product.Category}</td>
+                        <td>${product.Color}</td>
+                        <td>${product.HSN}</td>
+                        <td><strong>${quantity}</strong></td>
+                        <td class="right-align">${product.MRP}</td>
+                        <td class="right-align"><strong>${product.WSP}</strong></td>
+                        <td class="right-align"><strong>₹ ${lineTotal.toLocaleString('en-IN', {minimumFractionDigits: 2})}</strong></td>
+                    </tr>
+                  `;
+                }).join('')}
+            </tbody>
+        </table>
+        
+        <!-- Totals Section -->
+        <div class="totals-section">
+            <div class="total-line"><strong>TOTAL</strong> &nbsp;&nbsp;&nbsp; <strong>${totals.totalQty}</strong> &nbsp;&nbsp;&nbsp; <strong>₹ ${totals.totalValue.toLocaleString('en-IN', {minimumFractionDigits: 2})}</strong></div>
+            ${invoiceData.cashDiscount > 0 ? `<div class="total-line"><strong>CD ${invoiceData.cashDiscount}%</strong> &nbsp;&nbsp;&nbsp; <strong>₹ ${totals.discountAmount.toLocaleString('en-IN', {minimumFractionDigits: 2})}</strong></div>` : ''}
+            <div class="total-line"><strong>NET AMOUNT</strong> &nbsp;&nbsp;&nbsp; <strong>₹ ${totals.netAmount.toLocaleString('en-IN', {minimumFractionDigits: 2})}</strong></div>
+            ${totals.isMaharashtra ? 
+              `<div class="total-line"><strong>ADD: CGST @ 2.5%</strong> &nbsp;&nbsp;&nbsp; <strong>₹ ${totals.cgst.toLocaleString('en-IN', {minimumFractionDigits: 2})}</strong></div>
+               <div class="total-line"><strong>ADD: SGST @ 2.5%</strong> &nbsp;&nbsp;&nbsp; <strong>₹ ${totals.sgst.toLocaleString('en-IN', {minimumFractionDigits: 2})}</strong></div>` :
+              `<div class="total-line"><strong>ADD: IGST @ 5%</strong> &nbsp;&nbsp;&nbsp; <strong>₹ ${totals.igst.toLocaleString('en-IN', {minimumFractionDigits: 2})}</strong></div>`
+            }
+            <div class="total-line final"><strong>TOTAL INVOICE VALUE (In Figures) &nbsp;&nbsp;&nbsp; ₹ ${totals.finalAmount.toLocaleString('en-IN', {minimumFractionDigits: 2})}</strong></div>
+        </div>
+        
+        <!-- Amount in Words -->
+        <div class="amount-words">
+            <strong>TOTAL INVOICE VALUE (In Words): INR ${numberToWords(Math.round(totals.finalAmount))} ONLY</strong>
+        </div>
+        
+        <!-- Footer Section -->
+        <div class="footer-section">
+            <div class="terms-conditions">
+                <div style="font-weight: bold; margin-bottom: 5px;">Terms and Conditions:</div>
+                <div style="font-weight: bold;">OUR PHILOSOPHY</div>
+                <div>WE DO WHAT IS RIGHT FOR OUR CUSTOMERS IF OUR PRODUCT OR SERVICE IS OF NO VALUE TO YOU</div>
+                <div>THEN YOUR MONEY IS OF NO VALUE TO US</div>
+                <br>
+                <div style="font-weight: bold;">THIS IS A COMPUTER GENERATED PI SIGNATURE IS NOT NEEDED</div>
+                <br>
+                <div style="font-weight: bold;">PLEASE INFORM US IF ANY CORRECTION NEEDS TO BE DONE IN THE PI IN YOUR DETAILS OR IN YOUR ORDER</div>
+                <div style="font-weight: bold;">PLEASE MAKE THE PAYMENT AND UPDATE US WITH A SCREEN SHOT - YOUR MATERIAL WILL BE DISPATCHED ONCE THE PAYMENT IS RCVD</div>
+            </div>
+            <div class="qr-payment">
+                <div style="font-weight: bold; margin-bottom: 5px;">SCAN QR FOR PAYMENT</div>
+                <div class="qr-code">
+                    <div class="qr-pattern"></div>
+                </div>
+                <div style="font-size: 8px; margin-top: 5px;"><strong>UPI Payment</strong></div>
+                <div style="font-size: 8px;">UMORA FASHION PVT LTD</div>
+            </div>
+        </div>
+        
+        <div class="authorized-sig">
+            Authorized Signatory
+        </div>
+    </div>
+</body>
+</html>`;
+
+            // Try to download (works in published environments)
+            try {
+              const blob = new Blob([invoiceHTMLContent], { type: 'text/html' });
+              const url = URL.createObjectURL(blob);
+              const link = document.createElement('a');
+              link.href = url;
+              link.download = `Proforma_Invoice_${invoiceData.piNumber.replace('/', '_')}_${invoiceData.customerName.replace(/[^a-zA-Z0-9]/g, '_')}.html`;
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+              URL.revokeObjectURL(url);
+            } catch (error) {
+              console.log('Download blocked, showing preview instead');
+            }
+
+            // Also show preview modal for Claude environment
+            setInvoiceHTML(invoiceHTMLContent);
+            setShowInvoicePreview(true);
           };
 
           const { totalItems, totalValue } = orderSummary;
@@ -341,40 +817,51 @@
                 {/* Header with Progress Steps */}
                 <div className="bg-white rounded-xl shadow-2xl p-8 mb-6 border border-gray-100">
                   <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-6 text-center">
-                    Product Catalog Management
+                    Product Catalog Management & Invoice System
                   </h1>
                   
                   {/* Progress Steps */}
-                  <div className="flex items-center justify-center space-x-4 text-sm">
+                  <div className="flex items-center justify-center space-x-2 text-sm flex-wrap">
                     <div className={`flex items-center space-x-2 ${currentStep >= 1 ? 'text-blue-600' : 'text-gray-400'}`}>
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${
                         currentStep >= 1 ? 'bg-blue-600 text-white' : 'bg-gray-300 text-gray-600'
                       } ${currentStep > 1 ? 'bg-green-500' : ''}`}>
-                        {currentStep > 1 ? <Check size={20} /> : '1'}
+                        {currentStep > 1 ? <Check size={16} /> : '1'}
                       </div>
-                      <span className="font-medium">Customer Details</span>
+                      <span className="font-medium">Customer</span>
                     </div>
                     
-                    <ArrowRight size={20} className="text-gray-400" />
+                    <ArrowRight size={16} className="text-gray-400" />
                     
                     <div className={`flex items-center space-x-2 ${currentStep >= 2 ? 'text-blue-600' : 'text-gray-400'}`}>
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${
                         currentStep >= 2 ? 'bg-blue-600 text-white' : 'bg-gray-300 text-gray-600'
                       } ${currentStep > 2 ? 'bg-green-500' : ''}`}>
-                        {currentStep > 2 ? <Check size={20} /> : '2'}
+                        {currentStep > 2 ? <Check size={16} /> : '2'}
                       </div>
-                      <span className="font-medium">Upload Catalog</span>
+                      <span className="font-medium">Upload</span>
                     </div>
                     
-                    <ArrowRight size={20} className="text-gray-400" />
+                    <ArrowRight size={16} className="text-gray-400" />
                     
                     <div className={`flex items-center space-x-2 ${currentStep >= 3 ? 'text-blue-600' : 'text-gray-400'}`}>
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${
                         currentStep >= 3 ? 'bg-blue-600 text-white' : 'bg-gray-300 text-gray-600'
-                      }`}>
-                        3
+                      } ${currentStep > 3 ? 'bg-green-500' : ''}`}>
+                        {currentStep > 3 ? <Check size={16} /> : '3'}
                       </div>
-                      <span className="font-medium">Product Selection</span>
+                      <span className="font-medium">Orders</span>
+                    </div>
+                    
+                    <ArrowRight size={16} className="text-gray-400" />
+                    
+                    <div className={`flex items-center space-x-2 ${currentStep >= 4 ? 'text-blue-600' : 'text-gray-400'}`}>
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${
+                        currentStep >= 4 ? 'bg-blue-600 text-white' : 'bg-gray-300 text-gray-600'
+                      }`}>
+                        4
+                      </div>
+                      <span className="font-medium">Invoice</span>
                     </div>
                   </div>
                 </div>
@@ -418,15 +905,25 @@
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
                           <Phone className="w-4 h-4 mr-2 text-orange-500" />
-                          Mobile Number *
+                          Mobile Number * (10 digits)
                         </label>
                         <input
                           type="tel"
                           value={customerData.customerMobile}
-                          onChange={(e) => setCustomerData({...customerData, customerMobile: e.target.value})}
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/\D/g, ''); // Only numbers
+                            if (value.length <= 10) {
+                              setCustomerData({...customerData, customerMobile: value});
+                            }
+                          }}
                           className="w-full p-4 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all"
-                          placeholder="Enter mobile number"
+                          placeholder="Enter 10-digit mobile number"
+                          maxLength="10"
+                          pattern="\d{10}"
                         />
+                        {customerData.customerMobile && !/^\d{10}$/.test(customerData.customerMobile) && (
+                          <p className="text-red-500 text-sm mt-1">Please enter exactly 10 digits</p>
+                        )}
                       </div>
                       
                       <div>
@@ -446,15 +943,25 @@
                       <div className="md:col-span-2">
                         <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
                           <MapPin className="w-4 h-4 mr-2 text-purple-500" />
-                          Pincode *
+                          Pincode * (6 digits)
                         </label>
                         <input
                           type="text"
                           value={customerData.pincode}
-                          onChange={(e) => setCustomerData({...customerData, pincode: e.target.value})}
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/\D/g, ''); // Only numbers
+                            if (value.length <= 6) {
+                              setCustomerData({...customerData, pincode: value});
+                            }
+                          }}
                           className="w-full p-4 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
-                          placeholder="Enter pincode"
+                          placeholder="Enter 6-digit pincode"
+                          maxLength="6"
+                          pattern="\d{6}"
                         />
+                        {customerData.pincode && !/^\d{6}$/.test(customerData.pincode) && (
+                          <p className="text-red-500 text-sm mt-1">Please enter exactly 6 digits</p>
+                        )}
                       </div>
                     </div>
                     
@@ -464,7 +971,7 @@
                           if (validateCustomerInfo()) {
                             setCurrentStep(2);
                           } else {
-                            alert('⚠️ Please fill in all customer details');
+                            alert('⚠️ Please fill in all customer details correctly:\n- Customer name is required\n- Mobile number must be exactly 10 digits\n- City is required\n- Pincode must be exactly 6 digits');
                           }
                         }}
                         disabled={!validateCustomerInfo()}
@@ -675,8 +1182,8 @@
                           
                           <div className="bg-gradient-to-r from-green-500 to-green-600 px-6 py-3 rounded-xl shadow-lg">
                             <div className="flex items-center gap-2">
-                              <DollarSign className="w-6 h-6 text-white" />
-                              <span className="text-lg font-bold text-white">₹{totalValue}</span>
+                              <span className="text-2xl font-bold text-white">₹</span>
+                              <span className="text-lg font-bold text-white">{totalValue}</span>
                             </div>
                           </div>
                         </div>
@@ -690,23 +1197,424 @@
                             <span>Back</span>
                           </button>
                           <button
-                            onClick={generateCSV}
+                            onClick={proceedToInvoice}
                             disabled={totalItems === 0}
                             className={`px-8 py-4 rounded-lg font-bold text-lg transition-all transform hover:scale-105 flex items-center space-x-2 ${
                               totalItems > 0
-                                ? 'bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white shadow-lg'
+                                ? 'bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white shadow-lg'
                                 : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                             }`}
                           >
                             <Download size={20} />
-                            <span>Download Order ({totalItems} items)</span>
+                            <span>Generate Invoice ({totalItems} items)</span>
                           </button>
                         </div>
                       </div>
                     </div>
                   </div>
                 )}
+
+                {/* Step 4: Invoice Generation */}
+                {currentStep === 4 && (
+                  <div className="space-y-6">
+                    <div className="bg-white rounded-xl shadow-2xl p-8 border border-gray-100">
+                      <h2 className="text-2xl font-bold text-gray-800 mb-6 flex items-center">
+                        <Building className="w-6 h-6 mr-3 text-green-600" />
+                        Generate Proforma Invoice
+                      </h2>
+                      
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {/* Left Column - Customer Details */}
+                        <div className="space-y-4">
+                          <h3 className="text-lg font-bold text-gray-800 border-b pb-2">Customer Details</h3>
+                          
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Customer Name *</label>
+                            <input
+                              type="text"
+                              value={invoiceData.customerName}
+                              onChange={(e) => setInvoiceData({...invoiceData, customerName: e.target.value})}
+                              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            />
+                          </div>
+                          
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Address Line 1 * (max 60 chars)</label>
+                            <input
+                              type="text"
+                              value={invoiceData.addressLine1}
+                              onChange={(e) => {
+                                if (e.target.value.length <= 60) {
+                                  setInvoiceData({...invoiceData, addressLine1: e.target.value});
+                                }
+                              }}
+                              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              placeholder="Street address, building name"
+                              maxLength="60"
+                            />
+                            <p className="text-gray-500 text-xs mt-1">{invoiceData.addressLine1.length}/60 characters</p>
+                          </div>
+                          
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Address Line 2 (max 60 chars)</label>
+                            <input
+                              type="text"
+                              value={invoiceData.addressLine2}
+                              onChange={(e) => {
+                                if (e.target.value.length <= 60) {
+                                  setInvoiceData({...invoiceData, addressLine2: e.target.value});
+                                }
+                              }}
+                              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              placeholder="Area, landmark"
+                              maxLength="60"
+                            />
+                            <p className="text-gray-500 text-xs mt-1">{invoiceData.addressLine2.length}/60 characters</p>
+                          </div>
+                          
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">City *</label>
+                              <input
+                                type="text"
+                                value={invoiceData.city}
+                                onChange={(e) => setInvoiceData({...invoiceData, city: e.target.value})}
+                                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">Pincode *</label>
+                              <input
+                                type="text"
+                                value={invoiceData.pincode}
+                                onChange={(e) => setInvoiceData({...invoiceData, pincode: e.target.value})}
+                                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              />
+                            </div>
+                          </div>
+                          
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">State *</label>
+                            <select
+                              value={invoiceData.state}
+                              onChange={(e) => setInvoiceData({...invoiceData, state: e.target.value})}
+                              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            >
+                              <option value="">Select State</option>
+                              {indianStates.map((state) => (
+                                <option key={state} value={state}>{state}</option>
+                              ))}
+                            </select>
+                          </div>
+                          
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">GST Number (Format: 22AAAAA0000A1Z5)</label>
+                            <input
+                              type="text"
+                              value={invoiceData.gstNo}
+                              onChange={(e) => {
+                                const value = e.target.value.toUpperCase();
+                                setInvoiceData({...invoiceData, gstNo: value});
+                              }}
+                              className={`w-full p-3 border rounded-lg focus:ring-2 focus:border-transparent transition-all ${
+                                validateGST(invoiceData.gstNo) ? 'border-gray-300 focus:ring-blue-500' : 'border-red-300 focus:ring-red-500'
+                              }`}
+                              placeholder="22AAAAA0000A1Z5 (if applicable)"
+                              maxLength="15"
+                            />
+                            {invoiceData.gstNo && !validateGST(invoiceData.gstNo) && (
+                              <p className="text-red-500 text-sm mt-1">Invalid GST format. Example: 22AAAAA0000A1Z5</p>
+                            )}
+                          </div>
+                          
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Contact Person</label>
+                            <input
+                              type="text"
+                              value={invoiceData.contactPerson}
+                              onChange={(e) => setInvoiceData({...invoiceData, contactPerson: e.target.value})}
+                              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              placeholder="Contact person name"
+                            />
+                          </div>
+                          
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Contact Details</label>
+                            <textarea
+                              value={invoiceData.contactDetails}
+                              onChange={(e) => setInvoiceData({...invoiceData, contactDetails: e.target.value})}
+                              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              rows="3"
+                              placeholder="Mobile numbers, email addresses"
+                            />
+                          </div>
+                        </div>
+                        
+                        {/* Right Column - Invoice Details */}
+                        <div className="space-y-4">
+                          <h3 className="text-lg font-bold text-gray-800 border-b pb-2">Invoice Details</h3>
+                          
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">PI Number *</label>
+                            <input
+                              type="text"
+                              value={invoiceData.piNumber}
+                              onChange={(e) => setInvoiceData({...invoiceData, piNumber: e.target.value})}
+                              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                              placeholder="13/2025-26"
+                            />
+                          </div>
+                          
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Total Cartons/Boxes</label>
+                            <input
+                              type="text"
+                              value={invoiceData.totalCartons}
+                              onChange={(e) => setInvoiceData({...invoiceData, totalCartons: e.target.value})}
+                              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                              placeholder="Number of cartons"
+                            />
+                          </div>
+                          
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">E-way Bill Number</label>
+                            <input
+                              type="text"
+                              value={invoiceData.ewayBillNumber}
+                              onChange={(e) => setInvoiceData({...invoiceData, ewayBillNumber: e.target.value})}
+                              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                              placeholder="E-way bill number"
+                            />
+                          </div>
+                          
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Payment Terms</label>
+                            <select
+                              value={invoiceData.paymentTerms}
+                              onChange={(e) => setInvoiceData({...invoiceData, paymentTerms: e.target.value})}
+                              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                            >
+                              <option value="100% ADVANCE">100% ADVANCE</option>
+                              <option value="OTHER">Other</option>
+                            </select>
+                            {invoiceData.paymentTerms === 'OTHER' && (
+                              <div className="mt-3">
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Custom Payment Terms</label>
+                                <input
+                                  type="text"
+                                  value={invoiceData.customPaymentTerms}
+                                  onChange={(e) => setInvoiceData({...invoiceData, customPaymentTerms: e.target.value})}
+                                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                  placeholder="Enter custom payment terms"
+                                />
+                              </div>
+                            )}
+                          </div>
+                          
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Logistics Charges (₹)</label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={invoiceData.logisticsCharges}
+                              onChange={(e) => setInvoiceData({...invoiceData, logisticsCharges: parseFloat(e.target.value) || 0})}
+                              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                              placeholder="0 for free delivery"
+                            />
+                          </div>
+                          
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Cash Discount (%)</label>
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.1"
+                              value={invoiceData.cashDiscount}
+                              onChange={(e) => setInvoiceData({...invoiceData, cashDiscount: parseFloat(e.target.value) || 0})}
+                              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                              placeholder="0 for no discount"
+                            />
+                          </div>
+                          
+                          {/* Invoice Calculation Preview */}
+                          <div className="bg-gray-50 p-4 rounded-lg">
+                            <h4 className="font-bold text-gray-800 mb-3">Invoice Preview</h4>
+                            {(() => {
+                              const totals = calculateInvoiceTotals();
+                              return (
+                                <div className="space-y-2 text-sm">
+                                  <div className="flex justify-between">
+                                    <span>Total Qty:</span>
+                                    <span className="font-medium">{totals.totalQty}</span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span>Total Value:</span>
+                                    <span className="font-medium">₹{totals.totalValue.toLocaleString('en-IN', {minimumFractionDigits: 2})}</span>
+                                  </div>
+                                  {invoiceData.cashDiscount > 0 && (
+                                    <div className="flex justify-between text-red-600">
+                                      <span>Cash Discount ({invoiceData.cashDiscount}%):</span>
+                                      <span className="font-medium">-₹{totals.discountAmount.toLocaleString('en-IN', {minimumFractionDigits: 2})}</span>
+                                    </div>
+                                  )}
+                                  {invoiceData.logisticsCharges > 0 && (
+                                    <div className="flex justify-between text-blue-600">
+                                      <span>Logistics Charges:</span>
+                                      <span className="font-medium">+₹{invoiceData.logisticsCharges.toLocaleString('en-IN', {minimumFractionDigits: 2})}</span>
+                                    </div>
+                                  )}
+                                  <div className="flex justify-between border-t pt-2">
+                                    <span>Net Amount:</span>
+                                    <span className="font-medium">₹{totals.netAmount.toLocaleString('en-IN', {minimumFractionDigits: 2})}</span>
+                                  </div>
+                                  {totals.isMaharashtra ? (
+                                    <>
+                                      <div className="flex justify-between text-green-600">
+                                        <span>CGST @ 2.5%:</span>
+                                        <span className="font-medium">₹{totals.cgst.toLocaleString('en-IN', {minimumFractionDigits: 2})}</span>
+                                      </div>
+                                      <div className="flex justify-between text-green-600">
+                                        <span>SGST @ 2.5%:</span>
+                                        <span className="font-medium">₹{totals.sgst.toLocaleString('en-IN', {minimumFractionDigits: 2})}</span>
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <div className="flex justify-between text-green-600">
+                                      <span>IGST @ 5%:</span>
+                                      <span className="font-medium">₹{totals.igst.toLocaleString('en-IN', {minimumFractionDigits: 2})}</span>
+                                    </div>
+                                  )}
+                                  <div className="flex justify-between border-t pt-2 font-bold text-lg">
+                                    <span>Final Amount:</span>
+                                    <span className="text-green-600">₹{totals.finalAmount.toLocaleString('en-IN', {minimumFractionDigits: 2})}</span>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="mt-8 flex justify-between">
+                        <button
+                          onClick={() => setCurrentStep(3)}
+                          className="bg-gradient-to-r from-gray-500 to-gray-600 hover:from-gray-600 hover:to-gray-700 text-white px-6 py-3 rounded-lg font-medium transition-all flex items-center space-x-2"
+                        >
+                          <ArrowLeft size={16} />
+                          <span>Back to Orders</span>
+                        </button>
+                        
+                        <button
+                          onClick={generateInvoicePDF}
+                          disabled={!invoiceData.customerName || !invoiceData.addressLine1 || !invoiceData.city || !invoiceData.pincode || !invoiceData.state || !validateGST(invoiceData.gstNo)}
+                          className={`px-8 py-4 rounded-lg font-bold text-lg transition-all transform hover:scale-105 flex items-center space-x-2 ${
+                            invoiceData.customerName && invoiceData.addressLine1 && invoiceData.city && invoiceData.pincode && invoiceData.state && validateGST(invoiceData.gstNo)
+                              ? 'bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white shadow-lg'
+                              : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                          }`}
+                        >
+                          <Download size={20} />
+                          <span>Download Proforma Invoice</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
+
+              {/* Invoice Preview Modal */}
+              {showInvoicePreview && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                  <div className="bg-white rounded-xl shadow-2xl max-w-6xl w-full max-h-[90vh] flex flex-col">
+                    <div className="p-6 border-b border-gray-200">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-xl font-bold text-gray-800">📄 Proforma Invoice Preview</h3>
+                        <button
+                          onClick={() => setShowInvoicePreview(false)}
+                          className="text-gray-500 hover:text-gray-700 text-2xl font-bold"
+                        >
+                          ×
+                        </button>
+                      </div>
+                      <p className="text-gray-600 mt-2">
+                        Copy the HTML content below and save it as a .html file, or view the rendered invoice
+                      </p>
+                    </div>
+                    
+                    <div className="p-6 flex-1 overflow-hidden flex gap-6">
+                      {/* Left Side - HTML Code */}
+                      <div className="w-1/2">
+                        <h4 className="font-bold text-gray-800 mb-3">HTML Code (Copy & Save as .html)</h4>
+                        <textarea
+                          value={invoiceHTML}
+                          readOnly
+                          className="w-full h-96 p-4 border-2 border-gray-300 rounded-lg font-mono text-xs resize-none"
+                          placeholder="Invoice HTML will appear here..."
+                        />
+                        
+                        <div className="flex gap-3 mt-4">
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(invoiceHTML);
+                              console.log('✅ Invoice HTML copied to clipboard!');
+                            }}
+                            className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-6 py-3 rounded-lg font-medium transition-all flex items-center space-x-2"
+                          >
+                            <span>📋 Copy HTML Code</span>
+                          </button>
+                        </div>
+                        
+                        <div className="mt-4 p-4 bg-green-50 rounded-lg">
+                          <h5 className="font-bold text-green-800 mb-2">💡 How to save as Invoice:</h5>
+                          <ol className="text-green-700 text-sm space-y-1">
+                            <li>1. Click "Copy HTML Code" above</li>
+                            <li>2. Open a text editor (Notepad, VS Code, etc.)</li>
+                            <li>3. Paste the content (Ctrl+V or Cmd+V)</li>
+                            <li>4. Save as "invoice.html"</li>
+                            <li>5. Double-click the file to open in browser and print to PDF</li>
+                          </ol>
+                        </div>
+                      </div>
+                      
+                      {/* Right Side - Rendered Preview */}
+                      <div className="w-1/2">
+                        <h4 className="font-bold text-gray-800 mb-3">Invoice Preview</h4>
+                        <div className="border-2 border-gray-300 rounded-lg h-96 overflow-auto bg-white">
+                          <iframe
+                            srcDoc={invoiceHTML}
+                            className="w-full h-full"
+                            title="Invoice Preview"
+                            style={{ transform: 'scale(0.7)', transformOrigin: 'top left', width: '142.8%', height: '142.8%' }}
+                          />
+                        </div>
+                        
+                        <div className="mt-4 p-4 bg-blue-50 rounded-lg">
+                          <h5 className="font-bold text-blue-800 mb-2">🖨️ Print Ready Features:</h5>
+                          <ul className="text-blue-700 text-sm space-y-1">
+                            <li>• Professional formatting for A4 printing</li>
+                            <li>• All calculations with proper GST breakdown</li>
+                            <li>• Company branding and banking details</li>
+                            <li>• Terms and conditions included</li>
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="p-6 border-t border-gray-200">
+                      <div className="flex gap-3 justify-center">
+                        <button
+                          onClick={() => setShowInvoicePreview(false)}
+                          className="bg-gradient-to-r from-gray-500 to-gray-600 hover:from-gray-600 hover:to-gray-700 text-white px-6 py-3 rounded-lg font-medium transition-all"
+                        >
+                          Close Preview
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           );
         };
